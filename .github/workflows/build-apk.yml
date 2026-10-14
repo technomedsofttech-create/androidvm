@@ -17,17 +17,17 @@ jobs:
           ZIP=$(ls *.zip | head -n 1)
           echo "Extracting $ZIP"
           unzip -q "$ZIP" -d _src
-          # The zip contains a QemuVmManager folder; move its contents to the top level
           if [ -d _src/QemuVmManager ]; then cp -a _src/QemuVmManager/. .; else cp -a _src/. .; fi
           rm -rf _src
-          ls
+          # extractNativeLibs is set in Gradle (useLegacyPackaging); remove the manifest copy AGP 8 objects to
+          sed -i '/android:extractNativeLibs=/d' app/src/main/AndroidManifest.xml
 
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Install Android NDK and CMake (SDK is preinstalled on the runner)
+      - name: Install Android NDK and CMake
         run: |
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKMANAGER" --licenses > /dev/null || true
@@ -39,7 +39,25 @@ jobs:
           gradle-version: "8.10.2"
 
       - name: Build debug APK
-        run: gradle :app:assembleDebug --stacktrace
+        run: |
+          set -o pipefail
+          gradle :app:assembleDebug --stacktrace 2>&1 | tee build.log
+
+      - name: Show errors on the summary page
+        if: failure()
+        run: |
+          {
+            echo "## Build errors (copy everything below and send it to Claude)"
+            echo '```'
+            grep -E "^e: |error:|ERROR:|What went wrong|> Task .*FAILED|Could not|Unresolved|Execution failed" build.log | head -n 60
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-log
+          path: build.log
 
       - uses: actions/upload-artifact@v4
         with:
