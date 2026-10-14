@@ -1,0 +1,45 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract the uploaded project zip
+        run: |
+          ZIP=$(ls *.zip | head -n 1)
+          echo "Extracting $ZIP"
+          unzip -q "$ZIP" -d _src
+          # The zip contains a QemuVmManager folder; move its contents to the top level
+          if [ -d _src/QemuVmManager ]; then cp -a _src/QemuVmManager/. .; else cp -a _src/. .; fi
+          rm -rf _src
+          ls
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install NDK and CMake
+        run: sdkmanager --install "ndk;27.2.12479018" "cmake;3.22.1" "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VmManager-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
